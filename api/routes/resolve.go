@@ -1,17 +1,34 @@
 package routes
 
-import "time"
+import (
+	"github.com/Delaram-Gholampoor-Sagha/url-shortner/api/database"
+	"github.com/go-redis/redis/v8"
+	"github.com/gofiber/fiber/v2"
+)
 
-type request struct {
-	URL            string        `json:"url"`
-	CustomShortner string        `json:"short"`
-	Expiry         time.Duration `json:"expiry"`
-}
+func ResolveURL(c *fiber.Ctx) error {
+	url := c.Params("url")
 
-type response struct {
-	URL            string        `json:"url"`
-	CustomShort    string        `json:"short"`
-	Expiry         time.Duration `json:"expiry"`
-	XRateRemaining int           `json:"rate_limit"`
-	XRateLimitRest time.Duration `json:"rate_limit_reset"`
+	r := database.CreateClient(0)
+
+	defer r.Close()
+
+	value, err := r.Get(database.Ctx, url).Result()
+	if err == redis.Nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "short not found in the database",
+		})
+	} else if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "cannot connect to DB",
+		})
+	}
+
+	rInr := database.CreateClient(1)
+	defer rInr.Close()
+
+	_ = rInr.Incr(database.Ctx, "counter")
+
+	return c.Redirect(value, 301)
+
 }
